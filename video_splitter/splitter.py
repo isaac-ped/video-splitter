@@ -11,6 +11,13 @@ class Timestamp(NamedTuple):
     m: int
     s: int
 
+logs = []
+
+def log(msg):
+    logs.append(msg)
+    print(msg)
+
+
 @dataclass
 class Section:
     name: str
@@ -20,6 +27,17 @@ class Section:
     @property
     def start_seconds(self):
         return self.start[0] * 3600 + self.start[1] * 60 + self.start[2]
+    
+    @property
+    def start_string(self):
+        return f"{self.start.h}h {self.start.m}m {self.start.s}s"
+    
+    @property
+    def end_string(self):
+        if self.end is None:
+            return "End of file"
+        else:
+            return f"{self.end.h}h {self.end.m}m {self.end.s}s"
     
     @property
     def duration(self):
@@ -94,6 +112,7 @@ def extract_section(input: Path, out_dir: Path, section: Section):
     # https://unix.stackexchange.com/a/1675
     args = [
         "ffmpeg",
+        "-y",
         "-i",
         str(input),
         "-c",
@@ -103,8 +122,10 @@ def extract_section(input: Path, out_dir: Path, section: Section):
         *duration_flag,
         str(filename)
     ]
-    print("Running " + " ".join(args))
-    subprocess.check_call(args)
+    
+    log("Running " + " ".join(args))
+    logs.append(subprocess.check_output(args, text=True, stderr=subprocess.STDOUT))
+    return
 
 def load_config(file: Path) -> Cfg:
     with file.open() as f:
@@ -128,25 +149,31 @@ def load_config(file: Path) -> Cfg:
         sections.append(section_cfg)
     return sections
 
-def split_file(file: Path, out_dir: Path, cfg: Cfg):
+def split_file(file: Path, out_dir: Path, cfg: Cfg) -> str:
     for section in cfg:
         extract_section(file, out_dir, section)
+    return ("\n").join(logs).replace("\n", "<br/>") + "<br/>"
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('input', type=Path)
-    parser.add_argument('config', type=Path)
-    parser.add_argument('-o', '--output', type=Path, default=None)
+def main(input_=None, config=None, output=None):
+    if input_ is None or config is None:
+        parser = argparse.ArgumentParser()
+        parser.add_argument('input', type=Path, required=False)
+        parser.add_argument('config', type=Path)
+        parser.add_argument('-o', '--output', type=Path, default=None)
 
-    args = parser.parse_args()
-    if args.output is None:
-        args.output = args.input.with_name(f'{args.input.stem}_split')
+        args = parser.parse_args()
+        input_ = args.input
+        output = args.output
+        config = args.config
+
+    if output is None:
+        output = input_.with_name(f'{input_.stem}_split')
     
-    cfg = load_config(args.config)
-    print("Config is: ")
+    cfg = load_config(config)
+    log("Config is: ")
     for section in cfg:
-        print(section.to_string())
-    split_file(args.input, args.output, cfg)
+        log(section.to_string())
+    split_file(input_, output, cfg)
 
 if __name__ == "__main__":
     main()
